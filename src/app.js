@@ -38,7 +38,7 @@ $('#log-copy').onclick = async () => {
   catch { const r = document.createRange(); r.selectNodeContents($('#log-box')); getSelection().removeAllRanges(); getSelection().addRange(r); toast('Select the text and copy it (Ctrl+C)'); }
 };
 $('#log-clear').onclick = () => { window.__rbLog.length = 0; errCount = 0; ['#log-count', '#log-count-2'].forEach((id) => { $(id).hidden = true; }); $('#log-box').textContent = 'No errors or warnings so far.'; };
-log('info', 'Riffbook 2.1 starting · alphaTab ' + (alphaTab.meta ? alphaTab.meta.version : '1.8.4') + ' · ' + navigator.userAgent);
+log('info', 'Riffbook 2.2 starting · alphaTab ' + (alphaTab.meta ? alphaTab.meta.version : '1.8.4') + ' · ' + navigator.userAgent);
 
 const BASS_TONES = [
   { name: 'Electric bass', desc: 'fingered', program: 33 },
@@ -49,7 +49,7 @@ const BASS_TONES = [
 const GENRES = ['All', 'Rock', 'Metal', 'Blues', 'Funk', 'Jazz', 'My riffs'];
 
 // ---------------- preferences (Settings ⚙) ----------------
-const APP_VERSION = '2.1';
+const APP_VERSION = '2.2';
 const DEFAULT_PREFS = {
   // display
   defaultView: 'tab',          // 'tab' | 'both' | 'std'
@@ -1278,7 +1278,11 @@ function splitName(s) {
   return m ? { artist: m[1].trim(), title: m[2].trim() } : { artist: '', title: n };
 }
 // “( Metallica )” → “Metallica”
-const cleanArtist = (a) => String(a || '').replace(/^[\s([{"'“]+|[\s)\]}"'”]+$/g, '').replace(/\s+/g, ' ').trim();
+const cleanArtist = (a) => {
+  let t = String(a || '').replace(/\s+/g, ' ').trim();
+  for (const [o, c] of [['(', ')'], ['[', ']'], ['{', '}'], ['"', '"'], ['“', '”'], ["'", "'"]]) if (t.startsWith(o) && t.endsWith(c) && t.length > 2) t = t.slice(1, -1).trim();
+  return t;
+};
 const songArtist = (s) => cleanArtist(s.artist) || splitName(s).artist;
 const songTitle = (s) => (cleanArtist(s.artist) ? niceName(s.name) : splitName(s).title) || s.name;
 function initialsTile(text) {
@@ -1515,7 +1519,22 @@ $('#portion-list').addEventListener('click', async (e) => {
 });
 
 const IMPORT_EXT = ['gp', 'gp3', 'gp4', 'gp5', 'gpx', 'xml', 'musicxml', 'capx'];
-async function importFiles(files) {
+// demo songs (public-domain pieces, our own arrangements) — added once, when the library is empty
+const DEMO_SONGS = ['demo/House of the Rising Sun.gp', 'demo/F%C3%BCr%20Elise.gp', 'demo/Ode to Joy (Rock).gp'];
+async function loadDemoSongs(force = false) {
+  if (!force && (prefs.demoLoaded || state.songs.length)) return;
+  const files = [];
+  for (const path of DEMO_SONGS) {
+    try {
+      const r = await fetch(path.replace(/ /g, '%20'));
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      files.push(new File([await r.arrayBuffer()], decodeURIComponent(path.split('/').pop())));
+    } catch (e) { log('warn', `Demo song ${path}: ${e.message}`); }
+  }
+  prefs.demoLoaded = true; savePrefs();
+  if (files.length) await importFiles(files, { quiet: true });
+}
+async function importFiles(files, opts = {}) {
   if (!files.length) return;
   let last = null, ok = 0;
   for (const f of files) {
@@ -1544,6 +1563,7 @@ async function importFiles(files) {
     }
   }
   await refreshLibrary();
+  if (opts.quiet) { log('info', `${ok} demo song(s) added`); return; }
   if (last) {
     toast(ok > 1 ? `${ok} files imported` : 'Imported: ' + last.name);
     state.portionId = null;
@@ -2333,6 +2353,7 @@ async function renderSettings() {
         <button class="btn primary small" id="st-backup">Save backup</button>
         <label class="btn small">Restore from file<input type="file" id="st-restore" accept=".json,application/json" hidden></label>
       </div>
+      <div class="set-row"><span>Demo songs<span class="hint">House of the Rising Sun, Für Elise, Ode to Joy (Rock) — free to use</span></span><button class="btn small" id="st-demo">Add again</button></div>
       <div class="set-row"><span>Sync between devices<span class="hint">${esc(state.syncText || 'Off')}</span></span><button class="btn small" id="st-sync">Open</button></div>
       <div class="set-row"><span>Storage on this device<span class="hint">${storage}${persisted ? ' · protected from automatic clean-up' : ''}</span></span><button class="btn danger small" id="st-clear">Delete all data</button></div>
     </div>
@@ -2381,6 +2402,7 @@ $('#settings-body').addEventListener('input', (e) => {
 $('#settings-body').addEventListener('click', async (e) => {
   const id = e.target.closest('button') && e.target.closest('button').id;
   if (id === 'st-backup') makeBackup();
+  if (id === 'st-demo') { await loadDemoSongs(true); toast('Demo songs added to the library'); }
   if (id === 'st-snd-fix') { await freshAudio('button'); toast('Audio restarted — press Play'); }
   if (id === 'st-snd-clear') { await clearSoundCache(); snd.ready = false; snd.bytes = null; snd.bank = null; toast('Downloading the sounds again…'); loadSounds(true).then(() => { renderSettings(); if (snd.ready) toast('Sounds ready'); }); }
   if (id === 'st-sync') { closeSheet('sheet-settings'); openSync(); }
@@ -2435,6 +2457,7 @@ async function openSettings() { closeSheet('sheet-more'); await renderSettings()
     editor.load(newDoc());
     fillEditorFields();
     await refreshLibrary();
+    await loadDemoSongs();
     await updateSyncLabel();
     startAutoSync();
     window.__rbReady = true;

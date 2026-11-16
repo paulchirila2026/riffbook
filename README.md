@@ -4,6 +4,15 @@
 
 ▶ **Open the app:** https://paulchirila2026.github.io/riffbook/
 
+![Riffbook on a computer](docs/desktop-player.png)
+
+<p>
+  <img src="docs/phone-library.png" width="24%" alt="Library">
+  <img src="docs/phone-player.png" width="24%" alt="Player">
+  <img src="docs/phone-tuner.png" width="24%" alt="Tuner">
+  <img src="docs/phone-chords.png" width="24%" alt="Chords">
+</p>
+
 Riffbook opens Guitar Pro files (GP3, GP4, GP5, GPX, GP / GP7) and plays them with real instrument sounds. It is made for practising: slow a solo down, loop a few bars, save the parts you are learning, tune your guitar and work through chords and scales. Everything stays on your device — no account, no server.
 
 ---
@@ -28,6 +37,16 @@ Riffbook opens Guitar Pro files (GP3, GP4, GP5, GPX, GP / GP7) and plays them wi
 **Editor** — write your own riffs on a tab grid (hammer-ons, slides, bends, vibrato, palm mute) and export them as `.gp`
 
 **Everywhere** — installable as an app (PWA) on iPhone, Android and desktop, works offline, keeps the screen awake while you play, backup / restore of the whole library in one file
+
+## Demo songs
+
+The library starts with three demo songs, so every feature can be tried right away — multiple tracks, the song map, solo / mute, loops:
+
+- **House of the Rising Sun** — traditional, arpeggios + solo, bass and drums (6/8)
+- **Für Elise** — Beethoven, melody and accompaniment (3/8)
+- **Ode to Joy (Rock)** — Beethoven, lead, rhythm guitar, bass and drums
+
+The melodies are in the public domain; the arrangements were made for Riffbook. They can be added again from *Settings → Library → Demo songs*.
 
 ## Using it
 
@@ -58,6 +77,7 @@ npm run build
 | `lib/alphatab/` | alphaTab 1.8.4 (renders and plays the scores) |
 | `lib/sounds/` | GeneralUser GS sound bank, split into pieces |
 | `sw.js`, `manifest.webmanifest`, `icons/` | offline support and app icons |
+| `demo/` | the three demo songs (`.gp`) |
 | `sync.php` | optional sync between devices on a PHP host |
 
 ## License
