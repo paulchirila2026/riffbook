@@ -1,0 +1,22 @@
+# Tipuri corecte pentru modulele JavaScript și manifest
+AddType application/javascript .mjs
+AddType application/javascript .js
+AddType application/manifest+json .webmanifest
+AddType font/woff2 .woff2
+AddType application/octet-stream .sf2 .sf3
+
+# Service worker-ul nu trebuie păstrat în cache de browser
+<IfModule mod_headers.c>
+  <FilesMatch "(sw\.js|index\.html|config\.js)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+</IfModule>
+
+# Sync data must never be downloaded directly
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteRule ^sync-data/ - [F,L]
+</IfModule>
+
+# Sound bank pieces
+AddType application/octet-stream .sfp

@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#111214">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Riffbook">
+<title>Riffbook — guitar</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg?v=22" type="image/svg+xml">
+<link rel="icon" href="icons/icon-32.png?v=22" sizes="32x32" type="image/png">
+<link rel="icon" href="icons/icon-16.png?v=22" sizes="16x16" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=22">
+<link rel="stylesheet" href="css/app.css?v=22">
+<script>
+  // Early error capture + start-up check (runs even if the app itself fails to load)
+  window.__rbLog = [];
+  // the log of the previous session is kept, so it can be sent even after the app froze and was closed
+  try { window.__rbPrevLog = JSON.parse(localStorage.getItem('rbLastLog') || '[]'); } catch (e) { window.__rbPrevLog = []; }
+  var saveT = null;
+  function saveLog() { saveT = null; try { localStorage.setItem('rbLastLog', JSON.stringify(window.__rbLog.slice(-150))); } catch (e) {} }
+  window.__rbAdd = function (level, msg) {
+    var t = new Date().toTimeString().slice(0, 8);
+    window.__rbLog.push('[' + t + '] ' + level.toUpperCase() + ': ' + msg);
+    if (window.__rbLog.length > 400) window.__rbLog.shift();
+    if (!saveT) saveT = setTimeout(saveLog, 700);
+    if (window.__rbOnLog) window.__rbOnLog(level, msg);
+  };
+  // known harmless messages from the audio/render library: logged as warnings only
+  var BENIGN = [/cannot call stop without calling start/i, /realBounds/];
+  window.addEventListener('error', function (e) {
+    if (e.message && BENIGN.some(function (r) { return r.test(e.message); })) { window.__rbAdd('warn', e.message); return; }
+    if (e.target && e.target !== window && (e.target.src || e.target.href)) {
+      window.__rbAdd('error', 'Could not load ' + (e.target.src || e.target.href));
+    } else {
+      window.__rbAdd('error', (e.message || 'Error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : ''));
+    }
+  }, true);
+  window.addEventListener('unhandledrejection', function (e) {
+    var r = e.reason; window.__rbAdd('error', 'Unhandled: ' + (r && (r.stack || r.message) || r));
+  });
+  window.__rbBootFail = function (reason) {
+    if (window.__rbReady) return;
+    var box = document.getElementById('boot-error');
+    if (!box) return;
+    box.hidden = false;
+    document.getElementById('boot-reason').innerHTML = reason;
+    var out = document.getElementById('boot-log');
+    out.textContent = (window.__rbLog.join('\n') || '(no messages)') + '\n\nChecking app files…';
+    if (location.protocol === 'file:' || !window.fetch) return;
+    // diagnostics: what does the server return for each file the app needs?
+    var files = ['config.js', 'js/riffbook.js', 'lib/alphatab/alphaTab.min.js', 'lib/alphatab/font/Bravura.woff2', 'lib/alphatab/soundfont/sonivox.sf2'];
+    Promise.all(files.map(function (f) {
+      return fetch(f, { cache: 'no-store' }).then(function (r) {
+        var ct = r.headers.get('content-type') || '?';
+        return r.text().then(function (t) {
+          var warn = '';
+          if (/\.js$/.test(f) && !/javascript|ecmascript/i.test(ct)) warn = '  <-- wrong type for a script';
+          if (/text\/html/i.test(ct) && !/\.html$/.test(f)) warn = '  <-- server returned a web page instead: ' + t.replace(/\s+/g, ' ').slice(0, 120);
+          return (r.ok ? 'OK  ' : 'FAIL') + ' ' + r.status + '  ' + f + '  [' + ct + ', ' + t.length + ' bytes]' + warn;
+        });
+      }).catch(function (e) { return 'FAIL ---  ' + f + '  (' + e.message + ')'; });
+    })).then(function (lines) {
+      out.textContent = (window.__rbLog.join('\n') || '(no messages)') + '\n\nApp files on the server:\n' + lines.join('\n');
+    });
+  };
+  document.addEventListener('DOMContentLoaded', function () {
+    if (location.protocol === 'file:') {
+      window.__rbBootFail('The app was opened directly as a file (<code>file://</code>). Browsers block web apps like this in that mode.<br><br>' +
+        '<b>Windows:</b> double-click <code>Start Riffbook (Windows).bat</code> in the app folder — it opens Riffbook at <code>http://localhost:8780</code>.<br>' +
+        '<b>macOS / Linux:</b> run <code>start-riffbook-mac-linux.command</code>.<br><br>' +
+        'Online, upload the folder to a website with <code>https://</code>.');
+      return;
+    }
+    setTimeout(function () { window.__rbBootFail('The app did not finish starting. The messages below show what went wrong.'); }, 6000);
+  });
+</script>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-play" viewBox="0 0 24 24"><path fill="currentColor" d="M8 5l11 7-11 7z"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><rect fill="currentColor" x="6" y="5" width="4" height="14" rx="1"/><rect fill="currentColor" x="14" y="5" width="4" height="14" rx="1"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect fill="currentColor" x="6" y="6" width="12" height="12" rx="1.5"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M15 18l-6-6 6-6"/></symbol>
+  <symbol id="i-start" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M6 5v14M19 5L9 12l10 7z"/></symbol>
+  <symbol id="i-metro" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 3h6l4 18H5zM12 15l5-8"/></symbol>
+  <symbol id="i-tone" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle fill="currentColor" cx="5" cy="12" r="2"/><circle fill="currentColor" cx="12" cy="12" r="2"/><circle fill="currentColor" cx="19" cy="12" r="2"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M12 3v12M6 9l6-6 6 6M4 21h16"/></symbol>
+  <symbol id="i-cloud" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M7 18h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.1 9.3 4.5 4.5 0 0 0 7 18z"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-minus" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" d="M5 12h14"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></symbol>
+  <symbol id="i-star-on" viewBox="0 0 24 24"><path fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></symbol>
+  <symbol id="i-tracks" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M4 12h10M4 18h7"/><circle cx="18" cy="16" r="2.5"/><path d="M20.5 16V5l-3 1"/></g></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"/></symbol>
+  <symbol id="i-scissors" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4L8.1 15.9M14.5 14.5L20 20M8.1 8.1L12 12"/></g></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M18 6L6 18M6 6l12 12"/></symbol>
+  <symbol id="i-loop" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3"/></symbol>
+  <symbol id="i-songs" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></g></symbol>
+  <symbol id="i-tuner" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4 16a8 8 0 0 1 16 0M12 16l4-6"/></symbol>
+  <symbol id="i-riffs" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M3 6h18M3 10h18M3 14h18M3 18h18"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M5 12l5 5L20 7"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></g></symbol>
+  <symbol id="i-vol" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19.5 5.5a9 9 0 0 1 0 13"/></g></symbol>
+  <symbol id="i-mute" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M17 9l5 6M22 9l-5 6"/></g></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></g></symbol>
+  <symbol id="i-expand" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
+  <symbol id="i-shrink" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></g></symbol>
+  <symbol id="i-caret" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></symbol>
+  <symbol id="i-log" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M6 3h9l4 4v14H6zM9 12h7M9 16h7M9 8h3"/></symbol>
+</svg>
+
+<div id="app" data-view="songs">
+  <!-- ===== Top bar (desktop) ===== -->
+  <header class="topbar">
+    <div class="brand"><img src="icons/icon.svg?v=22" width="26" height="26" alt="">RIFFBOOK</div>
+    <nav class="topnav" aria-label="Sections">
+      <button data-go="songs" class="on">Songs</button>
+      <button data-go="tuner">Tuner</button>
+      <button data-go="riffs">Riffs</button>
+      <button data-go="editor">Editor</button>
+    </nav>
+    <div class="grow"></div>
+    <span class="sync-pill" id="sync-pill" hidden><svg width="15" height="15"><use href="#i-cloud"/></svg><span id="sync-label"></span></span>
+    <button class="icon-btn top-icon" id="set-btn" title="Settings" aria-label="Settings"><svg width="20" height="20"><use href="#i-gear"/></svg><b class="log-count" id="log-count" hidden></b></button>
+    <label class="btn import-btn">
+      <svg width="16" height="16"><use href="#i-upload"/></svg><span>Import GP5 / GPX</span>
+      <input type="file" id="file-input" accept=".gp,.gp3,.gp4,.gp5,.gpx,.xml,.musicxml,.capx" multiple hidden>
+    </label>
+  </header>
+
+  <div class="layout">
+    <!-- ===== Library ===== -->
+    <aside class="library" id="library">
+      <div class="lib-mobile-head">
+        <h1>Library</h1>
+        <div class="grow"></div>
+        <button class="icon-btn" id="set-btn-2" aria-label="Settings"><svg width="22" height="22"><use href="#i-gear"/></svg><b class="log-count" id="log-count-2" hidden></b></button>
+        <label class="btn small import-btn">
+          <svg width="14" height="14"><use href="#i-upload"/></svg>Import
+          <input type="file" class="file-input-2" accept=".gp,.gp3,.gp4,.gp5,.gpx,.xml,.musicxml,.capx" multiple hidden>
+        </label>
+      </div>
+      <div class="lib-tabs" role="tablist" aria-label="Library">
+        <button role="tab" data-tab="songs" class="on">Songs<span class="cnt" id="cnt-songs"></span></button>
+        <button role="tab" data-tab="sections">Sections<span class="cnt" id="cnt-sections"></span></button>
+        <button role="tab" data-tab="favs" aria-label="Favourites" title="Favourites"><svg width="15" height="15"><use href="#i-star-on"/></svg><span class="cnt" id="cnt-favs"></span></button>
+      </div>
+
+      <div class="lib-panel" data-panel="songs">
+        <div class="search-wrap">
+          <svg width="18" height="18"><use href="#i-search"/></svg>
+          <input type="text" id="lib-search" placeholder="Search songs or artists…" aria-label="Search songs" autocomplete="off" spellcheck="false">
+          <button class="icon-btn small" id="lib-search-x" aria-label="Clear search" hidden><svg width="14" height="14"><use href="#i-x"/></svg></button>
+        </div>
+        <div class="sel-bar" data-for="songs">
+          <span class="sel-info"></span>
+          <div class="grow"></div>
+          <select class="mini-select" id="lib-sort" aria-label="Sort songs">
+            <option value="name">Name</option><option value="artist">Artist</option><option value="recent">Recently opened</option><option value="added">Recently added</option>
+          </select>
+          <button class="linkish sel-start">Select</button>
+          <button class="linkish sel-allbtn" hidden>All</button>
+          <button class="btn danger small sel-del" hidden>Delete</button>
+          <button class="linkish sel-cancel" hidden>Cancel</button>
+        </div>
+        <div id="song-list" class="item-list scroll"><div class="empty-note">Loading…</div></div>
+      </div>
+
+      <div class="lib-panel" data-panel="sections" hidden>
+        <div class="sel-bar" data-for="sections">
+          <span class="sel-info"></span>
+          <div class="grow"></div>
+          <button class="linkish sel-start">Select</button>
+          <button class="linkish sel-allbtn" hidden>All</button>
+          <button class="btn danger small sel-del" hidden>Delete</button>
+          <button class="linkish sel-cancel" hidden>Cancel</button>
+        </div>
+        <div id="portion-list" class="item-list scroll"></div>
+      </div>
+
+      <div class="lib-panel" data-panel="favs" hidden>
+        <div id="fav-list" class="item-list scroll"></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <!-- ===== Player (Songs) ===== -->
+      <section class="view" id="view-songs">
+        <div class="p-head">
+          <button class="icon-btn mobile-only" id="p-back" aria-label="Back to library"><svg width="22" height="22"><use href="#i-back"/></svg></button>
+          <div class="p-title">
+            <div class="t" id="p-title">No song open</div>
+            <button class="s sub-btn" id="p-sub" aria-label="Choose track">Import a Guitar Pro file or pick a riff</button>
+          </div>
+          <button class="icon-btn aa-btn" id="p-aa" title="View: tab / notation, size, paper, text" aria-label="View options">Aa</button>
+          <button class="icon-btn" id="p-pick" aria-pressed="false" title="Select bars by tapping the first and the last one" aria-label="Select bars"><svg width="20" height="20"><use href="#i-scissors"/></svg></button>
+          <button class="icon-btn desktop-only" id="p-focus" title="Focus mode (F)" aria-label="Focus mode"><svg width="20" height="20"><use id="focus-icon" href="#i-expand"/></svg></button>
+          <button class="btn desktop-only" id="p-edit" hidden><svg width="16" height="16"><use href="#i-edit"/></svg>Edit</button>
+          <button class="icon-btn mobile-only" id="p-more" aria-label="More options"><svg width="22" height="22"><use href="#i-more"/></svg></button>
+        </div>
+
+        <div class="p-sections" id="p-sections" hidden></div>
+
+        <div class="p-cut" id="p-cut" hidden>
+          <svg width="18" height="18" class="acc"><use href="#i-scissors"/></svg>
+          <span id="cut-label">Selection</span>
+          <div class="grow"></div>
+          <button class="chip-btn small" id="cut-all" aria-pressed="false" hidden>Whole song</button>
+          <button class="btn primary small" id="cut-update" hidden>Update section</button>
+          <button class="btn ghost small" id="cut-save">Save section</button>
+          <button class="btn ghost small" id="cut-riff" hidden>Save as riff</button>
+          <button class="icon-btn small" id="cut-clear" aria-label="Clear selection"><svg width="16" height="16"><use href="#i-x"/></svg></button>
+        </div>
+
+        <div class="p-score">
+          <div id="at-wrap"><div id="at"></div></div>
+          <div class="pick-hint" id="pick-hint" hidden><span>Tap the first bar</span><button id="pick-cancel">Cancel</button></div>
+          <div class="p-empty" id="p-empty">
+            <svg width="40" height="40"><use href="#i-songs"/></svg>
+            <p>Import a <b>GP3, GP4, GP5, GPX</b> or <b>GP7/8</b> file — or drag it onto this page — or open a riff.</p>
+            <p class="hint">To practise a part (e.g. a solo): drag across the bars with the mouse / finger, or pick a section above.</p>
+          </div>
+          <div class="p-loading" id="p-loading" hidden>Loading…</div>
+        </div>
+
+        <div class="fretboard" id="fretboard" hidden></div>
+
+        <footer class="transport">
+          <div class="progress" id="progress"><div id="progress-bar"></div><div class="p-map" id="p-map"></div></div>
+          <div class="tr-row">
+            <div class="tr-l">
+            <div class="speed desktop-only">
+              <div class="speed-top"><span>Speed</span><b id="speed-val">100%</b></div>
+              <input type="range" id="t-speed" min="25" max="150" step="5" value="100" aria-label="Speed">
+            </div>
+            <button class="chip-btn desktop-only" id="t-auto" aria-pressed="false">+5% / loop</button>
+            <button class="chip-btn mobile-only" id="t-speed-m">100%</button>
+            <button class="chip-btn" id="t-loop" aria-pressed="false"><svg width="16" height="16"><use href="#i-loop"/></svg><span>Loop</span></button>
+            </div>
+            <div class="tr-c">
+            <button class="icon-btn desktop-only" id="t-stop" aria-label="Back to start"><svg width="18" height="18"><use href="#i-start"/></svg></button>
+            <button class="play" id="t-play" aria-label="Play"><svg width="24" height="24"><use id="play-icon" href="#i-play"/></svg></button>
+            </div>
+            <div class="tr-r">
+            <button class="chip-btn" id="t-tracks" aria-label="Tracks"><svg width="18" height="18"><use href="#i-tracks"/></svg><span class="desktop-only">Tracks</span></button>
+            <button class="chip-btn" id="t-metro" aria-pressed="false" aria-label="Metronome"><svg width="16" height="16"><use href="#i-metro"/></svg><span class="desktop-only">Metronome</span></button>
+            <button class="chip-btn desktop-only" id="t-count" aria-pressed="false">Count-in</button>
+            <div class="vol desktop-only">
+              <button class="icon-btn" id="t-mute" aria-label="Mute" title="Mute / unmute (M)"><svg width="20" height="20"><use class="vol-icon" href="#i-vol"/></svg></button>
+              <input type="range" id="t-vol" min="0" max="100" step="1" value="80" aria-label="Volume">
+            </div>
+            <button class="chip-btn mobile-only" id="t-tone-m" aria-label="Sound"><svg width="16" height="16"><use href="#i-tone"/></svg></button>
+            <button class="chip-btn mobile-only" id="t-more" aria-label="More options"><svg width="20" height="20"><use href="#i-more"/></svg></button>
+            </div>
+          </div>
+          <span class="pos desktop-only" id="t-pos">bar – / –</span>
+        </footer>
+      </section>
+
+      <!-- ===== Tuner ===== -->
+      <section class="view" id="view-tuner">
+        <div class="tuner">
+          <div class="tn-head">
+            <h1>Tuner</h1>
+            <div class="grow"></div>
+            <label class="tn-tuning"><span class="sr-only">Tuning</span><select id="tn-tuning-sel" aria-label="Tuning"></select><svg width="15" height="15"><use href="#i-caret"/></svg></label>
+          </div>
+          <div class="tn-chips" id="tn-chips"></div>
+          <div class="tn-gauge">
+            <svg viewBox="0 0 350 200" role="img" aria-label="Tuning gauge">
+              <path id="g-arc" fill="none" stroke="#2C2E34" stroke-width="14" stroke-linecap="round"/>
+              <path id="g-ok" fill="none" stroke="#3E8E5E" stroke-width="14" stroke-linecap="round"/>
+              <path id="g-ticks" stroke="#6B6E76" stroke-width="2" stroke-linecap="round"/>
+              <g id="g-needle"><line x1="175" y1="180" x2="175" y2="52" stroke="#F2A33A" stroke-width="4" stroke-linecap="round"/></g>
+              <circle cx="175" cy="180" r="9" fill="#F2A33A"/>
+              <text x="22" y="198" fill="#A3A6AE" font-size="12" font-family="JetBrains Mono, monospace">-50</text>
+              <text x="306" y="198" fill="#A3A6AE" font-size="12" font-family="JetBrains Mono, monospace">+50</text>
+            </svg>
+            <div class="tn-note idle" id="tn-note">–</div>
+            <div class="tn-read"><span id="tn-cents">– cents</span><span id="tn-hz">– Hz</span></div>
+            <div class="tn-hint" id="tn-hint">Start the microphone and pluck a string</div>
+            <div class="tn-level"><div id="tn-level"></div></div>
+          </div>
+          <div class="tn-strings" id="tn-strings"></div>
+          <button class="btn primary big" id="tn-start"><svg width="18" height="18"><use href="#i-mic"/></svg><span>Start microphone</span></button>
+          <details class="tn-more" id="tn-more">
+          <summary><span>Tuner settings</span><span class="tn-sum" id="tn-sum"></span><svg width="16" height="16"><use href="#i-caret"/></svg></summary>
+          <div class="tn-opts" id="tn-opts">
+            <label class="row"><span>Detect string automatically</span><input type="checkbox" id="tn-auto" checked class="switch"></label>
+            <label class="row"><span>Mic sensitivity</span><input type="range" id="tn-gain" min="1" max="20" step="1" value="4"></label>
+            <div class="row"><span>Reference A4</span><span class="stepper"><button id="tn-a4-m" aria-label="Lower">–</button><b id="tn-a4">440 Hz</b><button id="tn-a4-p" aria-label="Higher">+</button></span></div>
+            <label class="row"><span>Audio input</span><select id="tn-input"><option value="">Default</option></select></label>
+            <p class="tn-note-small">Tap a string to hear its reference tone. On a PC, the Spark Mini appears under “Audio input” once the microphone has been started.</p>
+          </div>
+          </details>
+        </div>
+      </section>
+
+      <!-- ===== Riffs ===== -->
+      <section class="view" id="view-riffs">
+        <div class="riffs">
+          <div class="rf-head">
+            <h1>Riffs</h1>
+            <button class="btn small import-btn rf-add" id="rf-add" aria-label="New riff"><svg width="14" height="14"><use href="#i-plus"/></svg><span>New riff</span></button>
+            <div class="seg" id="rf-mode" role="tablist">
+              <button data-mode="riffs" class="on">Riffs <span id="rf-count"></span></button>
+              <button data-mode="chords">Chords</button>
+              <button data-mode="scales">Scales</button>
+            </div>
+          </div>
+          <div class="rf-pane" data-pane="riffs">
+            <label class="search-wrap rf-search-wrap"><svg width="18" height="18"><use href="#i-search"/></svg><input type="search" id="rf-search" placeholder="Search riffs… (name, style, level)" aria-label="Search riffs"></label>
+            <div class="chips rf-genres" id="rf-genres"></div>
+            <div id="rf-list" class="rf-list"></div>
+          </div>
+          <div class="rf-pane" data-pane="chords" hidden>
+            <div class="ch-practice" id="ch-practice"></div>
+            <div id="ch-list"></div>
+          </div>
+          <div class="rf-pane" data-pane="scales" hidden>
+            <div class="rf-sub"><span>Dots in amber are the root note. Listen, then press Practice to play along in a loop.</span></div>
+            <div id="sc-list" class="sc-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== Editor ===== -->
+      <section class="view" id="view-editor">
+        <div class="editor">
+          <div class="ed-bar">
+            <input id="ed-name" class="ed-name" aria-label="Name" placeholder="Name">
+            <label>Type <select id="ed-type"><option value="riff">Riff</option><option value="song">Song</option></select></label>
+            <label class="riff-only">Genre <select id="ed-genre"></select></label>
+            <label class="riff-only">Level <select id="ed-level"><option>Easy</option><option>Medium</option><option>Hard</option></select></label>
+            <label>Tempo <input id="ed-bpm" type="number" min="30" max="300" value="120"></label>
+            <label>Tuning <select id="ed-tuning"></select></label>
+            <label>Sound <select id="ed-tone"></select></label>
+          </div>
+          <div class="ed-bar ed-tools">
+            <div class="seg" role="group" aria-label="Note length in the current bar">
+              <button data-res-btn="4">1/4</button><button data-res-btn="8">1/8</button><button data-res-btn="16">1/16</button>
+            </div>
+            <button class="btn small" id="ed-addm"><svg width="14" height="14"><use href="#i-plus"/></svg>Bar</button>
+            <button class="btn small" id="ed-delm"><svg width="14" height="14"><use href="#i-minus"/></svg>Bar</button>
+            <div class="seg" id="ed-fx" role="group" aria-label="Techniques"></div>
+            <div class="grow"></div>
+            <button class="btn small" id="ed-play"><svg width="14" height="14"><use id="ed-play-icon" href="#i-play"/></svg>Listen</button>
+            <button class="btn small" id="ed-new">New</button>
+            <button class="btn small" id="ed-export">Export .gp</button>
+            <button class="btn primary small" id="ed-save">Save</button>
+          </div>
+          <div class="ed-grid" id="ed-grid" tabindex="0" aria-label="Tab grid"></div>
+          <div class="ed-info" id="ed-info"></div>
+          <div class="ed-keys desktop-only">Digits = fret · <b>X</b> dead note · <b>↑↓</b> string · <b>←→</b> position · <b>H</b> hammer-on/pull-off (on the starting note) · <b>S</b> slide · <b>B</b> bend · <b>V</b> vibrato · <b>M</b> palm mute · <b>Del</b> delete · <b>Space</b> listen</div>
+          <div class="ed-pad mobile-only" id="ed-pad"></div>
+          <div class="ed-preview" id="ed-preview-slot"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ===== Bottom nav (phone) ===== -->
+  <nav class="bottomnav" aria-label="Sections">
+    <button data-go="songs" class="on"><svg width="22" height="22"><use href="#i-songs"/></svg>Songs</button>
+    <button data-go="tuner"><svg width="22" height="22"><use href="#i-tuner"/></svg>Tuner</button>
+    <button data-go="riffs"><svg width="22" height="22"><use href="#i-riffs"/></svg>Riffs</button>
+    <button data-go="editor"><svg width="22" height="22"><use href="#i-edit"/></svg>Editor</button>
+  </nav>
+</div>
+
+<!-- Sheet: player options (phone) -->
+<div class="sheet" id="sheet-more" hidden>
+  <div class="sheet-card">
+    <div class="sheet-head"><b>Options</b><button class="icon-btn" data-close aria-label="Close"><svg width="20" height="20"><use href="#i-x"/></svg></button></div>
+    <div class="sheet-sec">
+      <button class="btn wide-btn" id="m-pick" aria-pressed="false"><svg width="16" height="16"><use href="#i-scissors"/></svg>Select bars to loop or save</button>
+    </div>
+    <div class="sheet-sec" id="m-sections-sec" hidden>
+      <div class="lib-title">SECTIONS</div>
+      <div class="chips" id="m-sections"></div>
+    </div>
+    <div class="sheet-sec">
+      <div class="lib-title">SPEED</div>
+      <div class="speed-m"><input type="range" id="t-speed-2" min="25" max="150" step="5" value="100" aria-label="Speed"><b id="speed-val-2">100%</b></div>
+      <div class="chips">
+        <button class="chip-btn" id="t-auto-2" aria-pressed="false">+5% every loop</button>
+        <button class="chip-btn" id="t-count-2" aria-pressed="false">Count-in 1-2-3-4</button>
+        <button class="chip-btn" id="t-metro-2" aria-pressed="false"><svg width="16" height="16"><use href="#i-metro"/></svg>Metronome</button>
+      </div>
+    </div>
+    <div class="sheet-sec">
+      <div class="lib-title">VOLUME</div>
+      <div class="speed-m"><button class="icon-btn" id="t-mute-2" aria-label="Mute"><svg width="22" height="22"><use class="vol-icon" href="#i-vol"/></svg></button><input type="range" id="t-vol-2" min="0" max="100" step="1" value="80" aria-label="Volume"><b id="vol-val-2">80%</b></div>
+    </div>
+    <div class="sheet-sec row-btns">
+      <button class="btn" id="p-edit-2" hidden><svg width="16" height="16"><use href="#i-edit"/></svg>Edit</button>
+      <button class="btn" id="set-btn-3"><svg width="16" height="16"><use href="#i-gear"/></svg>Settings</button>
+    </div>
+  </div>
+</div>
+
+<!-- Sheet: tracks (phone) -->
+<div class="sheet" id="sheet-tracks" hidden>
+  <div class="sheet-card">
+    <div class="sheet-head"><b>Tracks</b><button class="icon-btn" data-close aria-label="Close"><svg width="20" height="20"><use href="#i-x"/></svg></button></div>
+    <p class="sheet-help">Tap a name to show that track · sound ▾ changes the instrument · M = mute · S = solo · the slider sets the volume of each track.</p>
+    <div id="track-list-3" class="track-list"></div>
+  </div>
+</div>
+
+<!-- Sheet: settings -->
+<div class="sheet" id="sheet-settings" hidden>
+  <div class="sheet-card wide settings-card">
+    <div class="sheet-head"><b>Settings</b><button class="icon-btn" data-close aria-label="Close"><svg width="20" height="20"><use href="#i-x"/></svg></button></div>
+    <div id="settings-body"></div>
+  </div>
+</div>
+
+<!-- Sheet: sounds -->
+<!-- Sheet: view options (Aa) -->
+<div class="sheet" id="sheet-view" hidden>
+  <div class="sheet-card">
+    <div class="sheet-head"><b>View</b><button class="icon-btn" data-close aria-label="Close"><svg width="20" height="20"><use href="#i-x"/></svg></button></div>
+    <div class="sheet-sec">
+      <div class="seg wide" role="group" aria-label="What to show">
+        <button data-toggle="tab" class="on">Tab</button>
+        <button data-toggle="std">Notation</button>
+        <button data-toggle="fret">Fretboard</button>
+      </div>
+    </div>
+    <div class="sheet-sec">
+      <div class="v-row"><span>Size</span>
+        <div class="zoom m-zoom" role="group" aria-label="Zoom">
+          <button class="icon-btn" id="zoom-out-2" aria-label="Smaller"><span class="aa-s">A</span></button>
+          <span id="zoom-val-2">100%</span>
+          <button class="icon-btn" id="zoom-in-2" aria-label="Bigger"><span class="aa-l">A</span></button>
+        </div>
+      </div>
+      <div class="v-row"><span>Paper</span>
+        <div class="paper-dots" role="group" aria-label="Paper colour">
+          <button data-paperpick="cream" aria-label="Cream paper"></button>
+          <button data-paperpick="white" aria-label="White paper"></button>
+          <button data-paperpick="dark" aria-label="Dark paper"></button>
+        </div>
+      </div>
+    </div>
+    <div class="sheet-sec">
+      <div class="lib-title">TEXT ON THE SCORE</div>
+      <div id="view-texts"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Sheet: song actions (phone, long press) -->
+<div class="sheet" id="sheet-song" hidden>
+  <div class="sheet-card">
+    <div class="sheet-head"><b id="song-act-title">Song</b><button class="icon-btn" data-close aria-label="Close"><svg width="20" height="20"><use href="#i-x"/></svg></button></div>
+    <div class="sheet-sec act-list">
+      <button class="btn wide-btn" id="song-act-fav"><svg width="16" height="16"><use href="#i-star"/></svg><span>Add to favourites</span></button>
+      <button class="btn wide-btn danger" id="song-act-del"><svg width="16" height="16"><use href="#i-trash"/></svg>Delete</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet" id="sheet-tone" hidden>
+  <div class="sheet-card">
+    <div class="sheet-head"><b id="tone-title">Sound</b><button class="icon-btn" data-close aria-label="Close"><svg width="20" height="20"><use href="#i-x"/></svg></button></div>
+    <div id="tone-options" class="tone-options"></div>
+  </div>
+</div>
+
+<!-- Sheet: sync -->
+<div class="sheet" id="sheet-sync" hidden>
+  <div class="sheet-card">
+    <div class="sheet-head"><b>Sync between devices</b><button class="icon-btn" data-close aria-label="Close"><svg width="20" height="20"><use href="#i-x"/></svg></button></div>
+    <div id="sync-body"></div>
+  </div>
+</div>
+
+<!-- Sheet: log -->
+<div class="sheet" id="sheet-log" hidden>
+  <div class="sheet-card wide">
+    <div class="sheet-head"><b>Log</b><button class="icon-btn" data-close aria-label="Close"><svg width="20" height="20"><use href="#i-x"/></svg></button></div>
+    <p class="log-help">Errors and warnings from this session. Use “Copy” and paste it into the chat if something doesn't work.</p>
+    <pre class="log-box" id="log-box"></pre>
+    <div class="btns-row">
+      <button class="btn small" id="log-copy">Copy</button>
+      <button class="btn small" id="log-clear">Clear</button>
+    </div>
+  </div>
+</div>
+
+<!-- Start-up problem -->
+<div class="boot-error" id="boot-error" hidden>
+  <div class="sheet-card wide">
+    <div class="sheet-head"><b>Riffbook couldn't start</b></div>
+    <p id="boot-reason"></p>
+    <pre class="log-box" id="boot-log"></pre>
+  </div>
+</div>
+
+<!-- Drag & drop -->
+<div class="drop-overlay" id="drop-overlay" hidden>
+  <div class="drop-box"><svg width="40" height="40"><use href="#i-upload"/></svg><b>Drop Guitar Pro files to import</b><span>GP3 · GP4 · GP5 · GPX · GP7/8 · MusicXML</span></div>
+</div>
+
+<div class="snd-status" id="snd-status" hidden></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<!-- Hidden helper player (riff previews + editor) -->
+<div id="aux-holder" class="offscreen"><div id="at-aux"></div></div>
+
+<script src="config.js?v=22"></script>
+<script src="lib/alphatab/alphaTab.min.js?v=22" onerror="window.__rbBootFail('The music library could not be loaded from the server.')"></script>
+<script src="js/riffbook.js?v=22" onerror="window.__rbBootFail('The app code could not be loaded from the server.')"></script>
+</body>
+</html>

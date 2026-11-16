@@ -1,0 +1,38 @@
+{
+ "name": "GeneralUser GS 2.0.3",
+ "size": 32319396,
+ "parts": [
+  {
+   "file": "gu-00.sfp",
+   "size": 4500000
+  },
+  {
+   "file": "gu-01.sfp",
+   "size": 4500000
+  },
+  {
+   "file": "gu-02.sfp",
+   "size": 4500000
+  },
+  {
+   "file": "gu-03.sfp",
+   "size": 4500000
+  },
+  {
+   "file": "gu-04.sfp",
+   "size": 4500000
+  },
+  {
+   "file": "gu-05.sfp",
+   "size": 4500000
+  },
+  {
+   "file": "gu-06.sfp",
+   "size": 4500000
+  },
+  {
+   "file": "gu-07.sfp",
+   "size": 819396
+  }
+ ]
+}

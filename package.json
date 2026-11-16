@@ -1,0 +1,15 @@
+{
+  "name": "riffbook",
+  "version": "2.1.0",
+  "description": "Guitar Pro viewer and player in the browser — tabs, tuner, chords and scales. Works offline on PC and phone.",
+  "private": true,
+  "license": "GPL-3.0-only",
+  "author": "Paul Chirilă",
+  "repository": "github:paulchirila2026/riffbook",
+  "scripts": {
+    "build": "esbuild src/app.js --bundle --format=iife --target=es2020 --minify --sourcemap --outfile=js/riffbook.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}
