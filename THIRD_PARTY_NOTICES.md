@@ -1,8 +1,8 @@
 # Third-party components
 
-Riffbook (GPL-3.0) includes the following components.
+Riffbook (GPL-3.0) includes the following components. Each keeps its own license; the license texts are stored next to the files.
 
-The demo songs in `demo/` use public-domain melodies (traditional; Ludwig van Beethoven); the arrangements were written for Riffbook and are part of the project. Each keeps its own license; the license texts are stored next to the files.
+The demo songs in `demo/` use public-domain melodies (traditional; Ludwig van Beethoven); the arrangements were written for Riffbook and are part of the project.
 
 ## alphaTab 1.8.4 — MPL-2.0
 
