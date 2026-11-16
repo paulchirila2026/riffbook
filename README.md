@@ -68,9 +68,3 @@ Riffbook is free software: **GNU General Public License v3.0** — see [LICENSE]
 Riffbook includes third-party components under their own licenses (alphaTab — MPL-2.0, GeneralUser GS, SONiVOX, Bravura, Barlow and JetBrains Mono fonts). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 Built by Paul Chirilă together with Claude (Anthropic).
-
----
-
-### Pe scurt, în română
-
-Riffbook este o aplicație web pentru chitară: deschide fișiere Guitar Pro, le cântă cu sunete reale, permite încetinirea și repetarea unor bucăți, salvarea secțiunilor, acordarea chitarei și exersarea acordurilor și a gamelor. Funcționează pe calculator și pe telefon, și fără internet. Detalii în [CITESTE-MA.txt](CITESTE-MA.txt).
