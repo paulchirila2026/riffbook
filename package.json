@@ -1,6 +1,6 @@
 {
   "name": "riffbook",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Guitar Pro viewer and player in the browser — tabs, tuner, chords and scales. Works offline on PC and phone.",
   "private": true,
   "license": "GPL-3.0-only",

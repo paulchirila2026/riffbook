@@ -36,6 +36,8 @@ Riffbook opens Guitar Pro files (GP3, GP4, GP5, GPX, GP / GP7) and plays them wi
 
 **Editor** — write your own riffs on a tab grid (hammer-ons, slides, bends, vibrato, palm mute) and export them as `.gp`
 
+**Sync** — keep the same library (songs, sections, favourites) on PC and phone through a private GitHub repository of your own — see below
+
 **Everywhere** — installable as an app (PWA) on iPhone, Android and desktop, works offline, keeps the screen awake while you play, backup / restore of the whole library in one file
 
 ## Demo songs
@@ -58,6 +60,16 @@ The melodies are in the public domain; the arrangements were made for Riffbook. 
 - **On your own web hosting:** upload all files to a folder. `sync.php` is optional — it lets several devices share one library on a PHP host.
 
 The first time, the high-quality sounds (32 MB, in 8 pieces under 5 MB) are downloaded once and kept on the device.
+
+## Sync between devices
+
+Riffbook can keep your library in a **private GitHub repository** that only you can see. Nothing goes to any other server.
+
+1. On GitHub, create a new **private** repository, e.g. `riffbook-data` (empty is fine).
+2. Create a **fine-grained personal access token** (*Settings → Developer settings → Personal access tokens → Fine-grained tokens*): *Only select repositories* → `riffbook-data`, permission *Contents: Read and write*.
+3. In Riffbook open *Settings → Sync*, enter the repository (`your-name/riffbook-data`) and the token, press *Connect*. Do the same on every device.
+
+After that, changes sync automatically when the app opens and every few minutes. The token stays on the device.
 
 ## Building
 

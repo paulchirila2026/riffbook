@@ -1,5 +1,6 @@
 // Library sync between devices.
-// Two ways, chosen in the app (no file editing needed):
+// Three ways, chosen in the app (no file editing needed):
+//  - "github": a private GitHub repository holds the library (works with GitHub Pages, no server needed).
 //  - "website": the app's own server keeps a copy (sync.php, needs PHP hosting). Same sync code on every device.
 //  - "google": a "Riffbook" folder in Google Drive. Needs a Google client ID, pasted once in the app.
 
@@ -11,8 +12,11 @@ const CFG = window.RIFFBOOK_CONFIG || {};
 export async function getConfig() {
   const c = (await db.getSetting('sync')) || {};
   return {
-    mode: c.mode || null,               // 'website' | 'google' | null
+    mode: c.mode || null,               // 'github' | 'website' | 'google' | null
     code: c.code || '',
+    ghToken: c.ghToken || '',
+    ghRepo: c.ghRepo || '',
+    ghBranch: c.ghBranch || '',
     clientId: c.clientId || CFG.GOOGLE_CLIENT_ID || '',
   };
 }
@@ -181,6 +185,97 @@ function googleBackend() {
   };
 }
 
+// ---------------- GitHub backend (private data repository) ----------------
+// library.json + songs/<id>.<ext> in a private repo, through the GitHub contents API.
+const GH = 'https://api.github.com';
+const b64FromBuf = (buf) => {
+  const u8 = new Uint8Array(buf);
+  let s = '';
+  for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  return btoa(s);
+};
+const b64FromText = (t) => b64FromBuf(new TextEncoder().encode(t));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+export async function githubCheck(token, repo) {
+  if (!token) throw new Error('Paste the GitHub token first');
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new Error('Repository must look like owner/name');
+  const r = await fetch(`${GH}/repos/${repo}`, { headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json' }, cache: 'no-store' });
+  if (r.status === 401) throw new Error('GitHub did not accept the token (expired or mistyped?)');
+  if (r.status === 404) throw new Error(`Repository ${repo} not found — check the name, and that the token may access it`);
+  if (!r.ok) throw new Error('GitHub: ' + r.status);
+  const j = await r.json();
+  if (!j.permissions || !j.permissions.push) throw new Error('The token can read but not write this repository — give it “Contents: Read and write”');
+  return { private: j.private, branch: j.default_branch || 'main', empty: j.size === 0 };
+}
+
+function githubBackend(cfg) {
+  const repo = cfg.ghRepo, branch = cfg.ghBranch || 'main';
+  let lastWrite = 0, libSha = null;
+  const call = async (method, path, body, accept = 'application/vnd.github+json', tries = 0) => {
+    if (method !== 'GET') {
+      // GitHub limits how fast content can be written: keep writes ~0.8 s apart
+      const wait = lastWrite + 800 - Date.now();
+      if (wait > 0) await sleep(wait);
+      lastWrite = Date.now();
+    }
+    const url = `${GH}/repos/${repo}/contents/${path.split('/').map(encodeURIComponent).join('/')}` + (method === 'GET' ? `?ref=${encodeURIComponent(branch)}&t=${Date.now()}` : '');
+    const r = await fetch(url, {
+      method, cache: 'no-store',
+      headers: { Authorization: 'Bearer ' + cfg.ghToken, Accept: accept, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      body: body ? JSON.stringify({ ...body, branch }) : undefined,
+    });
+    if ((r.status === 403 || r.status === 429) && tries < 3) {
+      const ra = Number(r.headers.get('retry-after')) || 20 * (tries + 1);
+      await sleep(ra * 1000);
+      return call(method, path, body, accept, tries + 1);
+    }
+    return r;
+  };
+  const fail = async (r, what) => { throw new Error(`GitHub (${what}): ${r.status} ${(await r.text()).slice(0, 140)}`); };
+  const shaOf = async (path) => { const r = await call('GET', path); if (r.status === 404) return null; if (!r.ok) await fail(r, path); return (await r.json()).sha; };
+  const songPath = (rec) => `songs/${rec.id}.${(rec.ext || 'gp').replace(/[^\w]/g, '')}`;
+  const put = async (path, content, sha, message) => {
+    let r = await call('PUT', path, { message, content, ...(sha ? { sha } : {}) });
+    if (r.status === 409 || r.status === 422) {
+      // the file changed or our sha is old: fetch the current one and try once more
+      const cur = await shaOf(path);
+      r = await call('PUT', path, { message, content, ...(cur ? { sha: cur } : {}) });
+    }
+    if (!r.ok) await fail(r, path);
+    return (await r.json()).content.sha;
+  };
+  return {
+    name: 'github',
+    refKey: 'ghSha',
+    async getLib() {
+      const r = await call('GET', 'library.json');
+      if (r.status === 404) { libSha = null; return null; }
+      if (r.status === 409) { libSha = null; return null; } // empty repository
+      if (!r.ok) await fail(r, 'library.json');
+      const j = await r.json();
+      libSha = j.sha;
+      let text;
+      if (j.content && j.encoding === 'base64') text = new TextDecoder().decode(Uint8Array.from(atob(j.content.replace(/\n/g, '')), (c) => c.charCodeAt(0)));
+      else text = await (await call('GET', 'library.json', null, 'application/vnd.github.raw+json')).text();
+      try { return JSON.parse(text); } catch { return null; }
+    },
+    async putLib(obj) { libSha = await put('library.json', b64FromText(JSON.stringify(obj)), libSha, 'Riffbook: library'); },
+    async getFile(rec) {
+      const r = await call('GET', songPath(rec), null, 'application/vnd.github.raw+json');
+      if (!r.ok) await fail(r, songPath(rec));
+      return r.arrayBuffer();
+    },
+    async putFile(rec) { return put(songPath(rec), b64FromBuf(rec.data), rec.ghSha || null, 'Riffbook: ' + (rec.name || rec.id)); },
+    async delFile(rec) {
+      const sha = rec.ghSha || (await shaOf(songPath(rec)));
+      if (!sha) return;
+      const r = await call('DELETE', songPath(rec), { message: 'Riffbook: delete ' + (rec.name || rec.id), sha });
+      if (!r.ok && r.status !== 404) await fail(r, songPath(rec));
+    },
+  };
+}
+
 // ---------------- generic merge (newest version wins) ----------------
 let syncing = false;
 const strip = (o) => { const c = { ...o }; delete c.data; return c; };
@@ -240,7 +335,10 @@ export async function sync(onStatus = () => {}) {
   syncing = true;
   try {
     let be;
-    if (cfg.mode === 'website') {
+    if (cfg.mode === 'github') {
+      if (!cfg.ghToken || !cfg.ghRepo) throw new Error('Enter the GitHub token and repository first');
+      be = githubBackend(cfg);
+    } else if (cfg.mode === 'website') {
       if (!cfg.code) throw new Error('Enter a sync code first');
       be = websiteBackend(cfg.code);
     } else {

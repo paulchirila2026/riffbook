@@ -940,3 +940,10 @@ input.switch:checked::after{transform:translateX(18px);background:#fff}
   .ch-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
   .sc-list{grid-template-columns:1fr}
 }
+
+/* sync dialog: GitHub fields */
+.sy-lbl{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--mut);margin:8px 0 0}
+.sy-lbl .sy-input{width:100%;box-sizing:border-box}
+.sy-more{margin-top:12px}
+.sy-more > summary{cursor:pointer;color:var(--mut);font-size:14px;padding:8px 2px}
+.sy-more .sy-opt{margin-top:10px}

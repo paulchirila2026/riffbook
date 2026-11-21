@@ -1,7 +1,7 @@
 // Funcționare fără internet: fișierele aplicației sunt păstrate în cache.
-const CACHE = 'riffbook-v24';
+const CACHE = 'riffbook-v25';
 const CORE = [
-  './', 'index.html', 'css/app.css?v=23', 'manifest.webmanifest', 'config.js', 'js/riffbook.js',
+  './', 'index.html', 'css/app.css?v=24', 'manifest.webmanifest', 'config.js', 'js/riffbook.js',
   'lib/alphatab/alphaTab.min.js', 'lib/alphatab/font/Bravura.woff2', 'lib/alphatab/font/Bravura.woff', 'lib/alphatab/font/Bravura.otf',
   'lib/alphatab/soundfont/sonivox.sf2', 'icons/icon.svg', 'icons/icon-32.png', 'icons/icon-192.png', 'icons/icon-512.png',
 ];

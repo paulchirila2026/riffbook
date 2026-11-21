@@ -38,7 +38,7 @@ $('#log-copy').onclick = async () => {
   catch { const r = document.createRange(); r.selectNodeContents($('#log-box')); getSelection().removeAllRanges(); getSelection().addRange(r); toast('Select the text and copy it (Ctrl+C)'); }
 };
 $('#log-clear').onclick = () => { window.__rbLog.length = 0; errCount = 0; ['#log-count', '#log-count-2'].forEach((id) => { $(id).hidden = true; }); $('#log-box').textContent = 'No errors or warnings so far.'; };
-log('info', 'Riffbook 2.2 starting · alphaTab ' + (alphaTab.meta ? alphaTab.meta.version : '1.8.4') + ' · ' + navigator.userAgent);
+log('info', 'Riffbook 2.3 starting · alphaTab ' + (alphaTab.meta ? alphaTab.meta.version : '1.8.4') + ' · ' + navigator.userAgent);
 
 const BASS_TONES = [
   { name: 'Electric bass', desc: 'fingered', program: 33 },
@@ -49,7 +49,7 @@ const BASS_TONES = [
 const GENRES = ['All', 'Rock', 'Metal', 'Blues', 'Funk', 'Jazz', 'My riffs'];
 
 // ---------------- preferences (Settings ⚙) ----------------
-const APP_VERSION = '2.2';
+const APP_VERSION = '2.3';
 const DEFAULT_PREFS = {
   // display
   defaultView: 'tab',          // 'tab' | 'both' | 'std'
@@ -1032,7 +1032,8 @@ function setSpeed(v) {
 function setPressed(ids, on) { ids.forEach((id) => { const el = $('#' + id); if (el) el.setAttribute('aria-pressed', String(on)); }); }
 function loopLabel() {
   const r = state.range;
-  const t = r ? (r.a === r.b ? `Loop bar ${r.a + 1}` : `Loop bars ${r.a + 1}–${r.b + 1}`) : 'Repeat';
+  const narrow = window.innerWidth < 700;
+  const t = r ? (narrow ? (r.a === r.b ? `Bar ${r.a + 1}` : `${r.a + 1}–${r.b + 1}`) : (r.a === r.b ? `Loop bar ${r.a + 1}` : `Loop bars ${r.a + 1}–${r.b + 1}`)) : 'Repeat';
   const sp = $('#t-loop span');
   if (sp) sp.textContent = t;
   $('#t-loop').title = r ? 'Play the selected bars again and again' : 'Play the whole song again when it ends (select bars to loop only those)';
@@ -1523,21 +1524,27 @@ const IMPORT_EXT = ['gp', 'gp3', 'gp4', 'gp5', 'gpx', 'xml', 'musicxml', 'capx']
 const DEMO_SONGS = ['demo/House of the Rising Sun.gp', 'demo/F%C3%BCr%20Elise.gp', 'demo/Ode to Joy (Rock).gp'];
 async function loadDemoSongs(force = false) {
   if (!force && (prefs.demoLoaded || state.songs.length)) return;
-  const files = [];
+  const files = [], ids = [];
   for (const path of DEMO_SONGS) {
     try {
       const r = await fetch(path.replace(/ /g, '%20'));
       if (!r.ok) throw new Error('HTTP ' + r.status);
       files.push(new File([await r.arrayBuffer()], decodeURIComponent(path.split('/').pop())));
+      // fixed ids: the same demo song on two devices stays one song after syncing
+      ids.push('demo-' + decodeURIComponent(path.split('/').pop()).replace(/\.gp$/, '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''));
     } catch (e) { log('warn', `Demo song ${path}: ${e.message}`); }
   }
   prefs.demoLoaded = true; savePrefs();
-  if (files.length) await importFiles(files, { quiet: true });
+  if (files.length) {
+    // same ids as before: “Add again” replaces the demo copies instead of adding duplicates
+    await importFiles(files, { quiet: true, ids });
+  }
 }
 async function importFiles(files, opts = {}) {
   if (!files.length) return;
-  let last = null, ok = 0;
+  let last = null, ok = 0, idx = -1;
   for (const f of files) {
+    idx++;
     const ext = (f.name.split('.').pop() || '').toLowerCase();
     log('info', `Importing “${f.name}” (${Math.round(f.size / 1024)} KB)`);
     if (!IMPORT_EXT.includes(ext)) {
@@ -1550,7 +1557,7 @@ async function importFiles(files, opts = {}) {
       const score = alphaTab.importer.ScoreLoader.loadScoreFromBytes(new Uint8Array(buf), api.settings);
       const base = f.name.replace(/\.[^.]+$/, '');
       const song = {
-        id: db.uid(), kind: 'file', ext,
+        id: (opts.ids && opts.ids[idx]) || db.uid(), kind: 'file', ext,
         name: (score.title || '').trim() || base,
         artist: (score.artist || '').trim(),
         tracks: score.tracks.length, data: buf, dataAt: Date.now(), tones: {},
@@ -2071,7 +2078,7 @@ function onTunerData({ freq, level }) {
   $$('#tn-strings button').forEach((b, i) => b.classList.toggle('hit', i === target));
 }
 
-// ---------------- sync (website or Google Drive) ----------------
+// ---------------- sync (GitHub, website or Google Drive) ----------------
 let syncStatus = null;
 async function updateSyncLabel(status) {
   if (status !== undefined) syncStatus = status;
@@ -2113,12 +2120,30 @@ async function renderSyncDialog() {
   const last = await db.getSetting('lastSync');
   const web = await sync.websiteAvailable();
   if (!web && sync.websiteProblem) log('warn', 'Website sync unavailable: ' + sync.websiteProblem);
+  const modeName = { github: 'GitHub', website: 'through this website', google: 'Google Drive' }[cfg.mode];
   const status = cfg.mode
-    ? `<p class="sy-status ok">Sync is on (${cfg.mode === 'website' ? 'through this website' : 'Google Drive'})${last ? ' · last sync ' + new Date(last).toLocaleString() : ''}.</p>`
+    ? `<p class="sy-status ok">Sync is on (${modeName})${last ? ' · last sync ' + new Date(last).toLocaleString() : ''}.</p>`
     : '<p class="sy-status">Sync is off — the library is saved only on this device.</p>';
   body.innerHTML = `${status}
+    <div class="sy-opt ${cfg.mode === 'github' ? 'on' : ''}">
+      <div class="sy-title">GitHub <span class="tag">recommended</span></div>
+      <p>Keeps the library in a <b>private GitHub repository</b>. Enter the same repository and token on every device (PC, Mac, phone). The token is stored only on this device.</p>
+      <label class="sy-lbl">Repository<input id="sy-ghrepo" class="sy-input" placeholder="your-name/riffbook-data" value="${esc(cfg.ghRepo)}" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+      <label class="sy-lbl">Token<input id="sy-ghtoken" class="sy-input" type="password" placeholder="github_pat_…" value="${esc(cfg.ghToken)}" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+      <div class="btns"><button class="btn primary" id="sy-gh">${cfg.mode === 'github' ? 'Save & sync now' : 'Connect'}</button></div>
+      <details><summary>How to set it up (5 min, once)</summary>
+        <ol>
+          <li>On github.com: <b>+ → New repository</b> → name it e.g. <code>riffbook-data</code> → choose <b>Private</b> → Create</li>
+          <li>Profile picture → <b>Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token</b></li>
+          <li>Repository access: <b>Only select repositories</b> → pick <code>riffbook-data</code></li>
+          <li>Permissions → Repository permissions → <b>Contents: Read and write</b> · Expiration: as long as you like</li>
+          <li>Generate, copy the token and paste it above together with <code>your-name/riffbook-data</code></li>
+        </ol>
+        <p>The first sync uploads all songs (about 1 second per song); later syncs only send what changed.</p></details>
+    </div>
+    <details class="sy-more" ${cfg.mode === 'website' || cfg.mode === 'google' ? 'open' : ''}><summary>Other ways to sync</summary>
     <div class="sy-opt ${cfg.mode === 'website' ? 'on' : ''}">
-      <div class="sy-title">Through this website <span class="tag">recommended</span></div>
+      <div class="sy-title">Through this website</div>
       ${web ? `
         <p>Use the <b>same sync code</b> on every device (PC, Mac, phone). Anyone with the code can see the library, so keep it private.</p>
         <div class="sy-row"><input id="sy-code" class="sy-input" placeholder="Sync code" value="${esc(cfg.code)}" autocomplete="off" spellcheck="false">
@@ -2140,7 +2165,25 @@ async function renderSyncDialog() {
           <li>Copy the Client ID and paste it above</li>
         </ol></details>
     </div>
+    </details>
     ${cfg.mode ? '<div class="btns"><button class="btn" id="sy-off">Turn sync off</button></div>' : ''}`;
+  $('#sy-gh').onclick = async () => {
+    const ghRepo = $('#sy-ghrepo').value.trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '').replace(/\/$/, '');
+    const ghToken = $('#sy-ghtoken').value.trim();
+    const btn = $('#sy-gh');
+    btn.disabled = true; btn.textContent = 'Checking…';
+    try {
+      const info = await sync.githubCheck(ghToken, ghRepo);
+      if (!info.private && !confirm(`${ghRepo} is a PUBLIC repository — anyone could see your library. Continue anyway?`)) { btn.disabled = false; btn.textContent = 'Connect'; return; }
+      await sync.setConfig({ mode: 'github', ghRepo, ghToken, ghBranch: info.branch });
+      closeSheet('sheet-sync');
+      await runSync(false);
+    } catch (e) {
+      toast(e.message, 5000);
+      log('warn', 'GitHub sync: ' + e.message);
+      btn.disabled = false; btn.textContent = 'Connect';
+    }
+  };
   const gen = $('#sy-gen');
   if (gen) gen.onclick = () => { $('#sy-code').value = newCode(); };
   const copy = $('#sy-copy');
@@ -2174,7 +2217,7 @@ $('#sync-pill').onclick = openSync;
 
 async function canSyncQuietly() {
   const cfg = await sync.getConfig();
-  return cfg.mode === 'website' || (cfg.mode === 'google' && sync.hasGoogleToken());
+  return cfg.mode === 'website' || cfg.mode === 'github' || (cfg.mode === 'google' && sync.hasGoogleToken());
 }
 let syncTimer = null;
 window.addEventListener('rb-changed', async () => {
@@ -2185,10 +2228,10 @@ window.addEventListener('rb-changed', async () => {
 document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState === 'visible' && (await canSyncQuietly())) runSync(true);
 });
-// Website sync starts on its own; Google needs one tap first (the browser requires a gesture for the sign-in window)
+// Website and GitHub sync start on their own; Google needs one tap first (the browser requires a gesture for the sign-in window)
 async function startAutoSync() {
   const cfg = await sync.getConfig();
-  if (cfg.mode === 'website') { runSync(true); setInterval(() => { if (document.visibilityState === 'visible') runSync(true); }, 120000); }
+  if (cfg.mode === 'website' || cfg.mode === 'github') { runSync(true); setInterval(() => { if (document.visibilityState === 'visible') runSync(true); }, 120000); }
   if (cfg.mode === 'google') {
     const once = () => { window.removeEventListener('pointerdown', once, true); runSync(true); };
     window.addEventListener('pointerdown', once, true);
